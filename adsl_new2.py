@@ -7,7 +7,7 @@ from LineHosts import db as db_linehosts
 
 app = Flask(__name__)
 
-TM_DELTA = 60 * 60
+TM_DELTA = 60 * 60 * 10
 LB_IP = '183.61.80.68'
 logger = logging.getLogger('access')
 
@@ -93,19 +93,19 @@ def adsl_host_report():
 
                 return make_response('add new line, host:' + host + ' line:' + line)
         else:
-            return make_response('parameters error')
+            return 'NOOP',400
     else:
         return 'NOOP',400
 
 
 @app.route('/adsl/status', methods=['GET', "POST"])
-def adsl_status(request):
+def adsl_status():
     ip = getclientip(request)
     logger.info(ip + ' ' + request.method + ' ' + request.full_path)
 
     if request.method == 'GET':
-        if 'show' in request.GET:
-            if request.GET['show'] == 'all':
+        if 'show' in request.args:
+            if request.args['show'] == 'all':
                 rets = ''
                 queries = LineHosts.query.all()
                 # queries = LineHosts.objects.all()
@@ -124,7 +124,7 @@ def adsl_status(request):
 
                 return make_response(rets)
             else:
-                host = request.GET['show']
+                host = request.args['show']
                 queries = LineHosts.query.filter_by(host=host)
                 # queries = LineHosts.objects.filter(host=host)
                 if len(queries) > 0:
@@ -133,11 +133,11 @@ def adsl_status(request):
                     return make_response(404)
         else:
             rets = ''
-            queries = LineHosts.query.all()
+            queries = LineHosts.query.filter_by(status=u'available').all()
             # queries = LineHosts.objects.all()
             for query in queries:
                 tmdelta = (datetime.datetime.utcnow() - query.last_update_time.replace(tzinfo=None)).seconds
-                if query.status == u'available' and tmdelta <= TM_DELTA:
+                if tmdelta <= TM_DELTA:
                     s = query.host + ' ' + query.line + ' ' + query.adsl_ip + ' ' + query.status + ' ' + ' last updated before ' + str(
                         tmdelta) + ' seconds.'
 

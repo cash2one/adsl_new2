@@ -1,11 +1,13 @@
 # -*- coding:utf-8 -*-
 
 from flask import Flask, request, make_response, jsonify, redirect, url_for, Response
+from flask.ext.script import Manager, Shell
 import sys, logging, datetime
 from LineHosts import LineHosts
 from LineHosts import db as db_linehosts
 
 app = Flask(__name__)
+manager = Manager(app)
 
 TM_DELTA = 60 * 60 * 10
 LB_IP = '183.61.80.68'
@@ -40,8 +42,7 @@ def adsl_list():
     if len(queries) > 0:
         for query in queries:
             # if query.status.strip() == 'available':
-            if (query.last_update_time + datetime.timedelta(seconds=TM_DELTA)).replace(
-                    tzinfo=None) > datetime.datetime.utcnow():
+            if (query.last_update_time + datetime.timedelta(seconds=TM_DELTA)) > datetime.datetime.now():
                 str = query.host + ' ' + query.line + ' ONLINE\n'
             else:
                 str = query.host + ' ' + query.line + ' ERROR\n'
@@ -51,7 +52,7 @@ def adsl_list():
     return make_response(rets)
 
 
-@app.route('/adsl/host/report', methods=['POST',])
+@app.route('/adsl/host/report', methods=['POST', ])
 def adsl_host_report():
     ip = getclientip(request)
     logger.info(ip + ' ' + request.method + ' ' + request.full_path + ' ' + str(request.form))
@@ -86,16 +87,17 @@ def adsl_host_report():
             else:
                 n = '8' + host.replace('seo', '')
                 line = LB_IP + ':' + n
-                record = LineHosts(host=host, line=line, adsl_ip=ip, status=u'available', last_update_time = datetime.datetime.now())
+                record = LineHosts(host=host, line=line, adsl_ip=ip, status=u'available',
+                                   last_update_time=datetime.datetime.now())
                 db_linehosts.session.add(record)
                 db_linehosts.session.commit()
                 # record.save()
 
                 return make_response('add new line, host:' + host + ' line:' + line)
         else:
-            return 'NOOP',400
+            return 'NOOP', 400
     else:
-        return 'NOOP',400
+        return 'NOT AUTHORIZED', 400
 
 
 @app.route('/adsl/status', methods=['GET', "POST"])
@@ -110,7 +112,8 @@ def adsl_status():
                 queries = LineHosts.query.all()
                 # queries = LineHosts.objects.all()
                 for query in queries:
-                    tmdelta = (datetime.datetime.utcnow() - query.last_update_time.replace(tzinfo=None)).seconds
+                    td = (datetime.datetime.now() - query.last_update_time)
+                    tmdelta = td.days * 3600 * 24 + td.seconds
                     if query.status == u'available' and tmdelta <= TM_DELTA:
                         s = query.host + ' ' + query.line + ' ' + query.adsl_ip + ' ' + query.status + ' ' + ' last updated before ' + str(
                             tmdelta) + ' seconds.'
@@ -136,7 +139,7 @@ def adsl_status():
             queries = LineHosts.query.filter_by(status=u'available').all()
             # queries = LineHosts.objects.all()
             for query in queries:
-                tmdelta = (datetime.datetime.utcnow() - query.last_update_time.replace(tzinfo=None)).seconds
+                tmdelta = (datetime.datetime.now() - query.last_update_time).seconds
                 if tmdelta <= TM_DELTA:
                     s = query.host + ' ' + query.line + ' ' + query.adsl_ip + ' ' + query.status + ' ' + ' last updated before ' + str(
                         tmdelta) + ' seconds.'
@@ -148,7 +151,12 @@ def adsl_status():
         return make_response(400)
 
 
+def make_shell_context():
+    return dict(app=app,db=db_linehosts,LineHosts=LineHosts)
+
 if __name__ == '__main__':
     host = sys.argv[1]
     port = int(sys.argv[2])
     app.run(host=host, port=port, debug=True)
+    # manager.add_command('shell', Shell(make_context=make_shell_context))
+    # manager.run()
